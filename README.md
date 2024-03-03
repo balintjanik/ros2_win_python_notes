@@ -1,7 +1,5 @@
 # ROS 2 Tutorial Notes (Windows, Python)
-This file contains my notes written during learning ROS 2. I chose Python over C++, and my operating system is Windows 10 Pro. This file mainly contains the same commands found in the [original documentation of ROS 2 Foxy](https://docs.ros.org/en/foxy/index.html), but I added some notes, as well as some solutions to problems I encountered. 
-
-The original documentation is available [here](https://docs.ros.org/en/foxy/index.html).
+This file contains my notes written during learning ROS 2. I chose Python over C++, and my operating system is Windows 10 Pro. This file mainly contains the same commands found in the [original documentation of ROS 2 Foxy](https://docs.ros.org/en/foxy/index.html), but I added some notes, as well as some solutions to problems I encountered.
 
 ## Installation
 Follow the instructions of [ROS 2 Documentation: Installation](https://docs.ros.org/en/foxy/Installation/Windows-Install-Binary.html).
