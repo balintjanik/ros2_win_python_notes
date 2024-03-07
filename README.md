@@ -1181,3 +1181,222 @@ int64 sum
 #### 7. Test the new interfaces
 #### 7.1 Testing `num.msg` with pub/sub
 Optionally make a new pubsub package, or just modify the previous one, based on [these](https://docs.ros.org/en/foxy/Tutorials/Beginner-Client-Libraries/Custom-ROS2-Interfaces.html#test-the-new-interfaces).
+
+---
+
+### Implementing custom interfaces
+
+#### 1. Create a package
+```
+ros2 pkg create --build-type ament_cmake more_interfaces
+mkdir more_interfaces/msg
+```
+
+#### 2. Create a msg file
+Inside `more_interfaces/msg`, create a new file `AddressBook.msg`, and paste the following code to create a message meant to carry information about an individual:
+```
+uint8 PHONE_TYPE_HOME=0
+uint8 PHONE_TYPE_WORK=1
+uint8 PHONE_TYPE_MOBILE=2
+
+string first_name
+string last_name
+string phone_number
+uint8 phone_type
+```
+
+#### 2.1 Build a msg file
+Open `package.xml` and add the following lines:
+```
+<buildtool_depend>rosidl_default_generators</buildtool_depend>
+
+<exec_depend>rosidl_default_runtime</exec_depend>
+
+<member_of_group>rosidl_interface_packages</member_of_group>
+```
+**Note:** at build time, we need rosidl_default_generators, while at runtime, we only need rosidl_default_runtime.
+
+Open `CMakeLists.txt` and add the following lines:
+
+Find the package that generates message code from msg/srv files:
+```
+find_package(rosidl_default_generators REQUIRED)
+```
+Declare the list of messages you want to generate:
+```
+set(msg_files
+  "msg/AddressBook.msg"
+)
+```
+**Note:** By adding the .msg files manually, we make sure that CMake knows when it has to reconfigure the project after you add other .msg files.
+
+Generate messages:
+```
+rosidl_generate_interfaces(${PROJECT_NAME}
+  ${msg_files}
+)
+```
+Also make sure you export the message runtime dependency:
+```
+ament_export_dependencies(rosidl_default_runtime)
+```
+
+---
+
+#### 2.2 Set multiple interfaces
+You can use set in CMakeLists.txt to neatly list all of your interfaces:
+```
+set(msg_files
+  "msg/Message1.msg"
+  "msg/Message2.msg"
+  # etc
+  )
+
+set(srv_files
+  "srv/Service1.srv"
+  "srv/Service2.srv"
+   # etc
+  )
+```
+And generate all lists at once like so:
+```
+rosidl_generate_interfaces(${PROJECT_NAME}
+  ${msg_files}
+  ${srv_files}
+)
+```
+
+---
+
+#### 3. Use an interface from the same package
+Now we can start writing code that uses this message.
+**Note:** this example was only available in C++, but you can try to write it in Python!
+In `more_interfaces/src` create a file called `publish_address_book.cpp` and paste the following code:
+```
+#include <chrono>
+#include <memory>
+
+#include "rclcpp/rclcpp.hpp"
+#include "more_interfaces/msg/address_book.hpp"
+
+using namespace std::chrono_literals;
+
+class AddressBookPublisher : public rclcpp::Node
+{
+public:
+  AddressBookPublisher()
+  : Node("address_book_publisher")
+  {
+    address_book_publisher_ =
+      this->create_publisher<more_interfaces::msg::AddressBook>("address_book", 10);
+
+    auto publish_msg = [this]() -> void {
+        auto message = more_interfaces::msg::AddressBook();
+
+        message.first_name = "John";
+        message.last_name = "Doe";
+        message.phone_number = "1234567890";
+        message.phone_type = message.PHONE_TYPE_MOBILE;
+
+        std::cout << "Publishing Contact\nFirst:" << message.first_name <<
+          "  Last:" << message.last_name << std::endl;
+
+        this->address_book_publisher_->publish(message);
+      };
+    timer_ = this->create_wall_timer(1s, publish_msg);
+  }
+
+private:
+  rclcpp::Publisher<more_interfaces::msg::AddressBook>::SharedPtr address_book_publisher_;
+  rclcpp::TimerBase::SharedPtr timer_;
+};
+
+
+int main(int argc, char * argv[])
+{
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<AddressBookPublisher>());
+  rclcpp::shutdown();
+
+  return 0;
+}
+```
+For more details and explanation, visit [this page](https://docs.ros.org/en/foxy/Tutorials/Beginner-Client-Libraries/Single-Package-Define-And-Use-Interface.html#use-an-interface-from-the-same-package).
+
+#### 3.1 Create a publisher
+We need to create a new target for this node in the CMakeLists.txt:
+```
+find_package(rclcpp REQUIRED)
+
+add_executable(publish_address_book src/publish_address_book.cpp)
+ament_target_dependencies(publish_address_book rclcpp)
+
+install(TARGETS
+    publish_address_book
+  DESTINATION lib/${PROJECT_NAME})
+```
+
+#### 3.2 Link against the interface
+In order to use the messages generated in the same package we need to use the following CMake code:
+```
+rosidl_target_interfaces(publish_address_book
+  ${PROJECT_NAME} "rosidl_typesupport_cpp")
+```
+This finds the relevant generated C++ code from AddressBook.msg and allows your target to link against it.
+
+**Note:** You may have noticed that this step was not necessary when the interfaces being used were from a different package that was built independently. This CMake code is only required when you want to use interfaces in the same package as the one in which they are defined.
+
+---
+
+#### 4. Try it out
+Return to the root of the workspace to build the package:
+```
+cd /ros2_ws
+colcon build --merge-install --packages-up-to more_interfaces
+```
+Then source the workspace and run the publisher:
+```
+call install/local_setup.bat
+ros2 run more_interfaces publish_address_book
+```
+
+To confirm the message is being published on the address_book topic, open another terminal, source the workspace, and call topic echo:
+```
+call install/setup.bat
+ros2 topic echo /address_book
+```
+
+-*********************************************-
+
+For some reason I couldn't see the topic from<br>
+a separate terminal, but the prints were okay,<br>
+I did not check where the problem was<br>
+
+-*********************************************-
+
+---
+
+### Using parameters in a class
+#### 1. Create a package
+```
+ros2 pkg create --build-type ament_python python_parameters --dependencies rclpy
+```
+**Note:** The `--dependencies` argument will automatically add the necessary dependency lines to `package.xml` and `CMakeLists.txt`.
+
+#### 1.1 Update package.xml
+Dependencies are not a problem anymore, so just make sure to fill in the name, license, etc.
+
+#### 2. Write a python node
+Inside the `ros2_ws/src/python_parameters/python_parameters` directory, create a new file called `python_parameters_node.py` and paste the code you can found [here](https://docs.ros.org/en/foxy/Tutorials/Beginner-Client-Libraries/Using-Parameters-In-A-Class-Python.html#write-the-python-node), where you can also find an explanation of the code.
+
+#### 2.1 Add an entry point
+Open the setup.py file. Again, match the maintainer, maintainer_email, description and license fields to your package.xml.
+
+#### 3. Build and run
+Build the package, source it, and run it!
+
+#### 3.1 Change via the console
+Read more [here](https://docs.ros.org/en/foxy/Tutorials/Beginner-Client-Libraries/Using-Parameters-In-A-Class-Python.html#change-via-the-console).
+
+#### 3.2 Change via the launch file
+Read more [here](https://docs.ros.org/en/foxy/Tutorials/Beginner-Client-Libraries/Using-Parameters-In-A-Class-Python.html#change-via-a-launch-file).
