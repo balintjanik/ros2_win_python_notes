@@ -49,6 +49,8 @@ setx ROS_DOMAIN_ID=<your_domain_id>
 ```
 In short, the domain ID should be a number between 0-101 (inclusive), for more details read [this article](https://docs.ros.org/en/foxy/Concepts/About-Domain-ID.html)
 
+**Note:** Later I had some problems with setting it to 1, so if possible, set it to 0, because that will be the default value ROS2 will use.
+
 ---
 
 #### 5. Set ROS_LOCALHOST_ONLY variable
@@ -1133,6 +1135,15 @@ find_package(Python3 COMPONENTS Interpreter Development)
 ```
 It sets the correct path of Python for CMake, and THEN AFTER it was set, tries to find Python, and then runs the other stuff. This worked and the package build finished successfully.
 
+**FINAL FINAL SOLUTION:**
+Go to `C:\dev\ros2_foxy\share\ament_cmake_core\cmake\core\python.cmake`
+And add `set(PYTHON_EXECUTABLE "C:/Python38/python.exe")` BEFORE/ABOVE this:
+```
+find_package(PythonInterp ${PYTHON_VERSION} REQUIRED)
+message(STATUS "Using PYTHON_EXECUTABLE: ${PYTHON_EXECUTABLE}")
+```
+In this case, you don't need to add anything python related to the packages' individual `CMakeLists.txt`, but the CMake warnings seem to be inconsistent (sometimes I get a lot of warnings after build, and sometimes I don't get any)
+
 -***********************************************************************************-
 
 ---
@@ -1372,6 +1383,14 @@ For some reason I couldn't see the topic from<br>
 a separate terminal, but the prints were okay,<br>
 I did not check where the problem was<br>
 
+**SOLUTION:**
+I set the DOMAIN_ID to 1 during installation<br>
+But when I create packages/nodes, they use<br>
+0 as the id (don't really know why or where<br>
+it is specified), but changing the environment<br>
+variable to 0 resolved the issue
+`setx ROS_DOMAIN_ID 0`
+
 -*********************************************-
 
 ---
@@ -1400,3 +1419,104 @@ Read more [here](https://docs.ros.org/en/foxy/Tutorials/Beginner-Client-Librarie
 
 #### 3.2 Change via the launch file
 Read more [here](https://docs.ros.org/en/foxy/Tutorials/Beginner-Client-Libraries/Using-Parameters-In-A-Class-Python.html#change-via-a-launch-file).
+
+---
+
+### Making dependencies with rosdep
+Install rosdep:
+```
+pip install -U rosdep
+```
+Initialize rosdep:
+```
+rosdep init
+```
+Update cache:
+```
+rosdep update
+```
+Install dependencies (run from the root of a workspace):
+```
+rosdep install --from-paths src -y --ignore-src
+```
+- `--from-paths src` specifies the path to check for `package.xml` files to resolve keys for
+- `-y` means to default yes to all prompts from the package manager to install without prompts
+- `--ignore-src` means to ignore installing dependencies, even if a rosdep key exists, if the package itself is also in the workspace.
+
+---
+
+### Create an action
+**Note:** from now on I switch to a new workspace called `ros2_ws_tut`.
+#### 0. Create package
+
+#### 1. Defining an action 
+```
+# Request
+---
+# Result
+---
+# Feedback
+```
+- A *request* message is sent from an action client to an action server initiating a new goal.
+- A *result* message is sent from an action server to an action client when a goal is done.
+- *Feedback* messages are periodically sent from an action server to an action client with updates about a goal.
+
+An instance of an action is typically referred to as a *goal*.
+
+Example:
+Create an `action` directory in our ROS 2 package `action_tutorials_interfaces`:
+```
+cd action_tutorials_interfaces
+md action
+```
+Within the `action` directory, create a file called `Fibonacci.action` with the following contents:
+```
+int32 order
+---
+int32[] sequence
+---
+int32[] partial_sequence
+```
+The goal request is the `order` of the Fibonacci sequence we want to compute, the result is the final `sequence`, and the feedback is the `partial_sequence` computed so far.
+
+---
+
+#### 2. Building an action
+Before we can use the new Fibonacci action type in our code, we must pass the definition to the rosidl code generation pipeline.
+
+This is accomplished by adding the following lines to our `CMakeLists.txt` before the `ament_package()` line, in the `action_tutorials_interfaces`:
+```
+find_package(rosidl_default_generators REQUIRED)
+
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "action/Fibonacci.action"
+)
+```
+We should also add the required dependencies to our package.xml:
+```
+<buildtool_depend>rosidl_default_generators</buildtool_depend>
+<depend>action_msgs</depend>
+<member_of_group>rosidl_interface_packages</member_of_group>
+```
+**Note:** we need to depend on `action_msgs` since action definitions include additional metadata (e.g. goal IDs).
+
+We should now be able to build the package containing the Fibonacci action definition.
+
+By convention, action types will be prefixed by their package name and the word action. So when we want to refer to our new action, it will have the full name `action_tutorials_interfaces/action/Fibonacci`.
+
+We can check that our action built successfully with the command line tool:
+```
+# Source our workspace
+call install/setup.bat
+# Check that our action definition exists
+ros2 interface show action_tutorials_interfaces/action/Fibonacci
+```
+You should see the Fibonacci action definition printed to the screen.
+
+---
+
+### Writing an action server and client
+**Note:** this is based on the previous "Creating an action" tutorial
+Follow the instructions [here](https://docs.ros.org/en/foxy/Tutorials/Intermediate/Writing-an-Action-Server-Client/Py.html).
+
+**Note:** By default, if the goal handle state is not set in the execute callback it assumes the *aborted* state.
